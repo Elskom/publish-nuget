@@ -25,7 +25,7 @@ jobs:
       # Publish
       - name: publish on version change
         id: publish_nuget
-        uses: rohith/publish-nuget@v2
+        uses: Elskom/publish-nuget@main
         with:
           # Filepath of the solution of which contains all the projects to be packed, relative to root of repository
           SOLUTION_FILE_PATH: solution.sln

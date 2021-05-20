@@ -1,5 +1,5 @@
-name: Publish NuGet 2
-author: Rebel028
+name: Publish NuGet 3
+author: Els_kom
 description: Temporary fork of https://github.com/brandedoutcast/publish-nuget/
 
 inputs:

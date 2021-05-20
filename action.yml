@@ -1,6 +1,6 @@
-name: Publish NuGet
-author: Rohith Reddy (@rohith)
-description: Build, Pack & Publish a NuGet package with dotnet core on project version change
+name: Publish NuGet 2
+author: Rebel028
+description: Temporary fork of https://github.com/brandedoutcast/publish-nuget/
 
 inputs:
     SOLUTION_FILE_PATH:
@@ -33,8 +33,11 @@ inputs:
         description: Format of the git tag, [*] gets replaced with actual version
         required: false
         default: v*
+    GITHUB_USER:
+        description: Required for packages pushed to Github Package Registry. User allowed to push to repository, defaults to GITHUB_ACTOR (user that triggered the action) 
+        required: false
     NUGET_KEY:
-        description: API key to authenticate with NuGet server
+        description: API key to authenticate with NuGet server, or a token, issued for GITHUB_USER if you use GPR
         required: false
     NUGET_SOURCE:
         description: NuGet server uri hosting the packages, defaults to https://api.nuget.org

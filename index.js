@@ -6,7 +6,11 @@ const os = require("os"),
     globfs = require("glob-fs")(),
     hasGlob = require("has-glob")
 
+const SOURCE_NAME = "default";
+
 class Action {
+
+
     constructor() {
         this.solutionFile = process.env.SOLUTION_FILE_PATH
         this.packagePath = process.env.PACKAGE_PATH
@@ -17,10 +21,26 @@ class Action {
         this.version = process.env.INPUT_VERSION_STATIC || process.env.VERSION_STATIC
         this.tagCommit = JSON.parse(process.env.INPUT_TAG_COMMIT || process.env.TAG_COMMIT)
         this.tagFormat = process.env.INPUT_TAG_FORMAT || process.env.TAG_FORMAT
+        this.githubUser = process.env.INPUT_GITHUB_USER || process.env.GITHUB_ACTOR
         this.nugetKey = process.env.INPUT_NUGET_KEY || process.env.NUGET_KEY
         this.nugetSource = process.env.INPUT_NUGET_SOURCE || process.env.NUGET_SOURCE
         this.includeSymbols = JSON.parse(process.env.INPUT_INCLUDE_SYMBOLS || process.env.INCLUDE_SYMBOLS)
-        this.throwOnVersionExixts = JSON.parse(process.env.INPUT_THOW_ERROR_IF_VERSION_EXISTS || process.env.THOW_ERROR_IF_VERSION_EXISTS)
+        this.throwOnVersionExixts = process.env.INPUT_THOW_ERROR_IF_VERSION_EXISTS || process.env.THOW_ERROR_IF_VERSION_EXISTS
+
+        let addSourceCmd;
+        if (this.nugetSource.startsWith(`https://nuget.pkg.github.com/`)) {
+            this.sourceType = "GPR"
+            addSourceCmd = `dotnet nuget add source ${this.nugetSource}/index.json --name=${(SOURCE_NAME)} --username=${this.githubUser} --password=${this.nugetKey} --store-password-in-clear-text`
+        } else {
+            this.sourceType = "NuGet"
+            addSourceCmd = `dotnet nuget add source ${this.nugetSource}/v3/index.json --name=${SOURCE_NAME}`
+        }
+
+        console.log(this._executeCommand(addSourceCmd, { encoding: "utf-8" }).stdout)
+        const list1 = this._executeCommand("dotnet nuget list source", { encoding: "utf8" }).stdout;
+        const enable = this._executeCommand(`dotnet nuget enable source ${SOURCE_NAME}`, { encoding: "utf8" }).stdout;
+        console.log(list1);
+        console.log(enable);
     }
 
     _printErrorAndExit(msg) {
@@ -60,8 +80,9 @@ class Action {
 
         console.log(`NuGet Source: ${this.nugetSource}`)
 
-        const pushCmd = `dotnet nuget push ${this.packagePath}/${name}.${version}.nupkg -s ${this.nugetSource}/v3/index.json -k ${this.nugetKey} --skip-duplicate ${!this.includeSymbols ? "-n 1" : ""}`,
-            pushOutput = this._executeCommand(pushCmd, { encoding: "utf-8" }).stdout
+        const pushCmd = `dotnet nuget push ${this.packagePath}/${name}.${version}.nupkg -s ${(SOURCE_NAME)} ${this.nugetSource !== "GPR"? `-k ${this.nugetKey}`: ""} --skip-duplicate ${!this.includeSymbols ? "-n 1" : ""}`
+
+        const pushOutput = this._executeCommand(pushCmd, { encoding: "utf-8" }).stdout
 
         console.log(pushOutput)
 
@@ -79,15 +100,32 @@ class Action {
 
         console.log(`Package Name: ${this.packageName}`)
 
-        https.get(`${this.nugetSource}/v3-flatcontainer/${this.packageName}/index.json`, res => {
+        let url = ""
+        let options; //used for authentication
+
+        //small hack to get package versions from Github Package Registry
+        if (this.sourceType === "GPR") {
+            url = `${this.nugetSource}/download/${this.packageName}/index.json`
+            options = {
+                method: "GET",
+                auth:`${this.githubUser}:${this.nugetKey}`
+            }
+            console.log(`This is GPR, changing url for versioning...`)
+            console.log(url)
+        } else {
+            url = `${this.nugetSource}/v3-flatcontainer/${this.packageName}/index.json`
+        }
+
+        https.get(url, options, (res) => {
             let body = ""
+            
+            console.log(`Status code: ${res.statusCode}: ${res.statusMessage}`)
 
             if (res.statusCode == 404){
                 console.log(`No packages found. Pushing initial version...`)
                 this._pushPackage(this.version, this.packageName)
-            }
-
-            if (res.statusCode == 200) {
+            } 
+            else if (res.statusCode == 200) {
                 res.setEncoding("utf8")
                 res.on("data", chunk => body += chunk)
                 res.on("end", () => {
@@ -107,6 +145,10 @@ class Action {
                     }
                 })
             }
+            else {
+               this._printErrorAndExit(`error: ${res.statusCode}: ${res.statusMessage}`)
+            }
+            
         }).on("error", e => {
             this._printErrorAndExit(`error: ${e.message}`)
         })

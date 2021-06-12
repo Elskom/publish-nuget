@@ -3,9 +3,6 @@ author: Els_kom
 description: Temporary fork of https://github.com/brandedoutcast/publish-nuget/
 
 inputs:
-    SOLUTION_FILE_PATH:
-        description: Filepath of the solution of which contains all the projects to be packed, relative to root of repository
-        required: true
     PROJECT_FILE_PATH:
         description: Filepath of the project to be packaged or a glob of projects in the form of **/*.csproj, relative to root of repository
         required: true
@@ -22,6 +19,10 @@ inputs:
         description: Regex pattern to extract version info in a capturing group
         required: false
         default: ^\s*<Version>(.*)<\/Version>\s*$
+    PACKABLE_REGEX:
+        description: Regex pattern to extract if the project is a unit testing project.
+        required: false
+        default: ^\s*<IsPackable>(.*)</IsPackable>\s*$
     VERSION_STATIC:
         description: Useful with external providers like Nerdbank.GitVersioning, ignores VERSION_FILE_PATH & VERSION_REGEX
         required: false
@@ -43,10 +44,6 @@ inputs:
         description: NuGet server uri hosting the packages, defaults to https://api.nuget.org
         required: false
         default: https://api.nuget.org
-    INCLUDE_SYMBOLS:
-        description: Flag to toggle pushing symbols along with nuget package to the server, disabled by default
-        required: false
-        default: false
     THOW_ERROR_IF_VERSION_EXISTS:
         description: Flag to throw an error when trying to publish an existing version of a package
         required: false
@@ -55,18 +52,6 @@ inputs:
 outputs:
     VERSION:
         description: Version of the associated git tag
-
-    PACKAGE_NAME:
-        description: Name of the NuGet package generated
-    
-    PACKAGE_PATH:
-        description: Path to the generated NuGet package
-
-    SYMBOLS_PACKAGE_NAME:
-        description: Name of the symbols package generated
-    
-    SYMBOLS_PACKAGE_PATH:
-        description: Path to the generated symbols package
 
 runs:
     using: node12

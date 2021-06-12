@@ -26,10 +26,7 @@ jobs:
       - name: publish on version change
         id: publish_nuget
         uses: Elskom/publish-nuget@main
-        with:
-          # Filepath of the solution of which contains all the projects to be packed, relative to root of repository
-          SOLUTION_FILE_PATH: solution.sln
-          
+        with:          
           # Filepath of the project to be packaged, relative to root of repository
           PROJECT_FILE_PATH: '**/*.csproj'
           
@@ -59,9 +56,6 @@ jobs:
 
           # NuGet server uri hosting the packages, defaults to https://api.nuget.org
           # NUGET_SOURCE: https://api.nuget.org
-
-          # Flag to toggle pushing symbols along with nuget package to the server, disabled by default
-          # INCLUDE_SYMBOLS: false
           
           # Flag to throw an error when trying to publish an existing version of a package
           # THOW_ERROR_IF_VERSION_EXISTS: false
@@ -73,7 +67,6 @@ jobs:
 
 Input | Default Value | Description
 --- | --- | ---
-SOLUTION_FILE_PATH | | Filepath of the solution of which contains all the projects to be packed, relative to root of repository
 PROJECT_FILE_PATH | | Filepath of the project to be packaged or a glob of projects in the form of \*\*/\*.csproj, relative to root of repository
 PACKAGE_PATH | | Path to store all generated nuget packages, relative to root of repository
 PACKAGE_NAME | | NuGet package id, used for version detection & defaults to project name
@@ -85,7 +78,6 @@ TAG_FORMAT | `v*` | Format of the git tag, `[*]` gets replaced with actual versi
 GITHUB_USER |`[GITHUB_ACTOR]` | Required for packages pushed to Github Package Registry. User allowed to push to repository, defaults to GITHUB_ACTOR (user that triggered the action) 
 NUGET_KEY | | API key to authenticate with NuGet server, or a token, issued for GITHUB_USER if you use GPR
 NUGET_SOURCE | `https://api.nuget.org` | NuGet server uri hosting the packages, defaults to https://api.nuget.org
-INCLUDE_SYMBOLS | `false` | Flag to toggle pushing symbols along with nuget package to the server, disabled by default
 THOW_ERROR_IF_VERSION_EXISTS | `false` | Flag to throw an error when trying to publish an existing version of a package
 
 ## Outputs
@@ -93,10 +85,6 @@ THOW_ERROR_IF_VERSION_EXISTS | `false` | Flag to throw an error when trying to p
 Output | Description
 --- | ---
 VERSION | Version of the associated git tag
-PACKAGE_NAME | Name of the NuGet package generated
-PACKAGE_PATH | Path to the generated NuGet package
-SYMBOLS_PACKAGE_NAME | Name of the symbols package generated
-SYMBOLS_PACKAGE_PATH | Path to the generated symbols package
 
 **FYI:**
 - Outputs may or may not be set depending on the action inputs or if the action failed

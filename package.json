@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "glob-fs": "^0.1.7",
+    "has-glob": "^1.0.0"
+  }
+}

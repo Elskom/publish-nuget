@@ -3,44 +3,45 @@ const os = require("os"),
     path = require("path"),
     https = require("https"),
     spawnSync = require("child_process").spawnSync,
-    globfs = require("glob-fs")(),
+    globfs = require("glob-fs")({ gitignore: false }),
     hasGlob = require("has-glob")
 
-const SOURCE_NAME = "default";
+const SOURCE_NAME = "nuget.org";
+
+class Package {
+    
+    constructor(projectFile, versionFile, version, packageName) {
+        this.projectFile = projectFile
+        this.versionFile = versionFile
+        this.version = version
+        this.packageName = packageName
+    }
+}
 
 class Action {
 
-
     constructor() {
-        this.solutionFile = process.env.SOLUTION_FILE_PATH
-        this.packagePath = process.env.PACKAGE_PATH
+        this.packagePath = process.env.INPUT_PACKAGE_PATH
         this.projectFile = process.env.INPUT_PROJECT_FILE_PATH
         this.packageName = process.env.INPUT_PACKAGE_NAME || process.env.PACKAGE_NAME
         this.versionFile = process.env.INPUT_VERSION_FILE_PATH || process.env.VERSION_FILE_PATH || this.projectFile
         this.versionRegex = new RegExp(process.env.INPUT_VERSION_REGEX || process.env.VERSION_REGEX, "m")
+        this.packableRegex = new RegExp(process.env.INPUT_PACKABLE_REGEX || process.env.PACKABLE_REGEX, "m")
         this.version = process.env.INPUT_VERSION_STATIC || process.env.VERSION_STATIC
         this.tagCommit = JSON.parse(process.env.INPUT_TAG_COMMIT || process.env.TAG_COMMIT)
         this.tagFormat = process.env.INPUT_TAG_FORMAT || process.env.TAG_FORMAT
         this.githubUser = process.env.INPUT_GITHUB_USER || process.env.GITHUB_ACTOR
         this.nugetKey = process.env.INPUT_NUGET_KEY || process.env.NUGET_KEY
         this.nugetSource = process.env.INPUT_NUGET_SOURCE || process.env.NUGET_SOURCE
-        this.includeSymbols = JSON.parse(process.env.INPUT_INCLUDE_SYMBOLS || process.env.INCLUDE_SYMBOLS)
         this.throwOnVersionExixts = process.env.INPUT_THOW_ERROR_IF_VERSION_EXISTS || process.env.THOW_ERROR_IF_VERSION_EXISTS
-
-        let addSourceCmd;
         if (this.nugetSource.startsWith(`https://nuget.pkg.github.com/`)) {
             this.sourceType = "GPR"
-            addSourceCmd = `dotnet nuget add source ${this.nugetSource}/index.json --name=${(SOURCE_NAME)} --username=${this.githubUser} --password=${this.nugetKey} --store-password-in-clear-text`
-        } else {
-            this.sourceType = "NuGet"
-            addSourceCmd = `dotnet nuget add source ${this.nugetSource}/v3/index.json --name=${SOURCE_NAME}`
+            this._executeCommand(`dotnet nuget add source ${this.nugetSource}/index.json --name=${(SOURCE_NAME)} --username=${this.githubUser} --password=${this.nugetKey} --store-password-in-clear-text`, { encoding: "utf-8" })
         }
 
-        console.log(this._executeCommand(addSourceCmd, { encoding: "utf-8" }).stdout)
-        const list1 = this._executeCommand("dotnet nuget list source", { encoding: "utf8" }).stdout;
-        const enable = this._executeCommand(`dotnet nuget enable source ${SOURCE_NAME}`, { encoding: "utf8" }).stdout;
-        console.log(list1);
-        console.log(enable);
+        console.log(this._executeCommand("dotnet nuget list source", { encoding: "utf8" }).stdout)
+        console.log(this._executeCommand(`dotnet nuget enable source ${SOURCE_NAME}`, { encoding: "utf8" }).stdout)
+        this.packages = []
     }
 
     _printErrorAndExit(msg) {
@@ -80,7 +81,7 @@ class Action {
 
         console.log(`NuGet Source: ${this.nugetSource}`)
 
-        const pushCmd = `dotnet nuget push ${this.packagePath}/${name}.${version}.nupkg -s ${(SOURCE_NAME)} ${this.nugetSource !== "GPR"? `-k ${this.nugetKey}`: ""} --skip-duplicate ${!this.includeSymbols ? "-n 1" : ""}`
+        const pushCmd = `dotnet nuget push ${!this.packagePath.endsWith("/") ? `${this.packagePath}/` : `${this.packagePath}`}${name}.${version}.nupkg -s ${(SOURCE_NAME)} ${this.nugetSource !== "GPR"? `-k ${this.nugetKey}`: ""} --skip-duplicate`
 
         const pushOutput = this._executeCommand(pushCmd, { encoding: "utf-8" }).stdout
 
@@ -93,19 +94,19 @@ class Action {
             this._tagCommit(version)
     }
 
-    _checkForUpdate() {
-        if (!this.packageName) {
-            this.packageName = path.basename(this.projectFile).split(".").slice(0, -1).join(".")
+    _checkForUpdate(_package) {
+        if (!_package.packageName) {
+            _package.packageName = path.basename(_package.projectFile).split(".").slice(0, -1).join(".")
         }
 
-        console.log(`Package Name: ${this.packageName}`)
+        console.log(`Package Name: ${_package.packageName}`)
 
-        let url = ""
+        let url
         let options; //used for authentication
 
         //small hack to get package versions from Github Package Registry
         if (this.sourceType === "GPR") {
-            url = `${this.nugetSource}/download/${this.packageName}/index.json`
+            url = `${this.nugetSource}/download/${_package.packageName}/index.json`
             options = {
                 method: "GET",
                 auth:`${this.githubUser}:${this.nugetKey}`
@@ -113,33 +114,36 @@ class Action {
             console.log(`This is GPR, changing url for versioning...`)
             console.log(url)
         } else {
-            url = `${this.nugetSource}/v3-flatcontainer/${this.packageName}/index.json`
+            url = `${this.nugetSource}/v3-flatcontainer/${_package.packageName}/index.json`
+            options = {
+                method: "GET"
+            }
         }
 
         https.get(url, options, (res) => {
             let body = ""
-            
+
             console.log(`Status code: ${res.statusCode}: ${res.statusMessage}`)
 
-            if (res.statusCode == 404){
+            if (res.statusCode == 404) {
                 console.log(`No packages found. Pushing initial version...`)
-                this._pushPackage(this.version, this.packageName)
-            } 
+                this._pushPackage(_package.version, _package.packageName)
+            }
             else if (res.statusCode == 200) {
                 res.setEncoding("utf8")
                 res.on("data", chunk => body += chunk)
                 res.on("end", () => {
                     const existingVersions = JSON.parse(body)
-                    if (existingVersions.versions.indexOf(this.version) < 0) {
+                    if (existingVersions.versions.indexOf(_package.version) < 0) {
                         console.log(`This version is new, pushing...`)
-                        this._pushPackage(this.version, this.packageName)
+                        this._pushPackage(_package.version, _package.packageName)
                     }
                     else
                     {
-                        let errorMsg = `Version ${this.version} already exists`;
+                        let errorMsg = `Version ${_package.version} already exists`;
                         console.log(errorMsg)
-                        
-                        if(this.throwOnVersionExixts) {
+
+                        if (this.throwOnVersionExixts !== 'false') {
                             this._printErrorAndExit(`error: ${errorMsg}`)
                         }
                     }
@@ -148,70 +152,70 @@ class Action {
             else {
                this._printErrorAndExit(`error: ${res.statusCode}: ${res.statusMessage}`)
             }
-            
         }).on("error", e => {
             this._printErrorAndExit(`error: ${e.message}`)
         })
     }
 
-    _run_internal()
+    _run_internal(_package)
     {
-        if (!this.projectFile || !fs.existsSync(this.projectFile))
+        if (!_package.projectFile || !fs.existsSync(_package.projectFile))
             this._printErrorAndExit("project file not found")
 
-        console.log(`Project Filepath: ${this.projectFile}`)
+        let projectFileContent = fs.readFileSync(_package.projectFile, { encoding: "utf-8" }),
+            parsedTest = this.packableRegex.exec(projectFileContent)
 
-        if (!this.version) {
-            if (this.versionFile !== this.projectFile && !fs.existsSync(this.versionFile))
+        if (parsedTest == null) {
+            if (fs.existsSync(`${path.dirname(_package.projectFile)}/Directory.Build.props`)) {
+                let buildProps = fs.readFileSync(`${path.dirname(_package.projectFile)}/Directory.Build.props`, { encoding: "utf-8" })
+                parsedTest = this.packableRegex.exec(buildProps)
+            }
+        }
+
+        if (parsedTest != null && parsedTest[1] === "false") {
+            return
+        }
+
+        console.log(`Project Filepath: ${_package.projectFile}`)
+
+        if (!_package.version) {
+            if (_package.versionFile !== _package.projectFile && !fs.existsSync(_package.versionFile))
                 this._printErrorAndExit("version file not found")
 
-            console.log(`Version Filepath: ${this.versionFile}`)
+            console.log(`Version Filepath: ${_package.versionFile}`)
             console.log(`Version Regex: ${this.versionRegex}`)
 
-            const versionFileContent = fs.readFileSync(this.versionFile, { encoding: "utf-8" }),
+            let versionFileContent = fs.readFileSync(_package.versionFile, { encoding: "utf-8" }),
                 parsedVersion = this.versionRegex.exec(versionFileContent)
+
+            // fallback to parsing from Directory.Build.props.
+            if (!parsedVersion) {
+                if (fs.existsSync(`${path.dirname(_package.versionFile)}/Directory.Build.props`)) {
+                    versionFileContent = fs.readFileSync(`${path.dirname(_package.versionFile)}/Directory.Build.props`, { encoding: "utf-8" })
+                    parsedVersion = this.versionRegex.exec(versionFileContent)
+                }
+            }
 
             if (!parsedVersion)
                 this._printErrorAndExit("unable to extract version info!")
 
-            this.version = parsedVersion[1]
+            _package.version = parsedVersion[1]
+            this.packages.push(_package)
         }
 
-        console.log(`Version: ${this.version}`)
+        console.log(`Version: ${_package.version}`)
 
-        this._checkForUpdate()
+        this.packages.forEach(__package => this._checkForUpdate(__package))
+        this.packages.forEach(() => this.packages.pop())
     }
 
     run() {
-        if (!this.solutionFile || !fs.existsSync(this.solutionFile)) {
-            this._printErrorAndExit("solution file not found")
-        }
-
         if (!this.packagePath || !fs.existsSync(this.packagePath)) {
             this._printErrorAndExit("PACKAGE_PATH not provided.")
         }
 
-        // nuke ane normal .nupkg/.snupkg inside the user specified package path
-        // and then build the packages for the resulting projects inside of the
-        // solution file specified.
-        fs.readdirSync(this.packagePath).filter(fn => /\.s?nupkg$/.test(fn)).forEach(fn => fs.unlinkSync(fn))
-        this._executeInProcess(`dotnet build -c Release ${this.solutionFile}`)
-        this._executeInProcess(`dotnet pack ${this.includeSymbols ? "--include-symbols -p:SymbolPackageFormat=snupkg" : ""} --no-build --no-restore -c Release ${this.solutionFile} -o ${this.packagePath}`)
-        const packages = fs.readdirSync(this.packagePath).filter(fn => fn.endsWith("nupkg"))
-        console.log(`Generated Package(s): ${packages.join(", ")}`)
-
-        // TODO: output all of the package names and paths.
-        const packageFilename = packages.filter(p => p.endsWith(".nupkg"))[0],
-            symbolsFilename = packages.filter(p => p.endsWith(".snupkg"))[0]
-        process.stdout.write(`::set-output name=PACKAGE_NAME::${packageFilename}` + os.EOL)
-        process.stdout.write(`::set-output name=PACKAGE_PATH::${path.resolve(packageFilename)}` + os.EOL)
-        if (symbolsFilename) {
-            process.stdout.write(`::set-output name=SYMBOLS_PACKAGE_NAME::${symbolsFilename}` + os.EOL)
-            process.stdout.write(`::set-output name=SYMBOLS_PACKAGE_PATH::${path.resolve(symbolsFilename)}` + os.EOL)
-        }
-
         if (!hasGlob(this.projectFile) && !hasGlob(this.versionFile)) {
-            this._run_internal()
+            this._run_internal(new Package(this.projectFile, this.versionFile, this.version, this.packageName))
         }
 
         // it has a glob, now we need to recursively obtain all files
@@ -219,14 +223,14 @@ class Action {
         // need to reset the projectFile, and versionFile variables on
         // the object instance each time and call _run_internal() for
         // each file found that matches in the glob.
-        let tmp = this.projectFile
-        glob.on('include', function (file) {
-            this.projectFile = file.relative
-            this.versionFile = file.relative
-            this._run_internal()
+        globfs.on('include', function (file) {
+            const relative = path.relative(process.cwd(), file.path);
+            action._run_internal(new Package(relative, relative, null, null))
         })
-        glob.readdirSync(this.projectFile);
+
+        globfs.readdirSync(this.projectFile)
     }
 }
 
-new Action().run()
+const action = new Action();
+action.run()

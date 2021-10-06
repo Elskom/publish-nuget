@@ -18,7 +18,7 @@ inputs:
     VERSION_REGEX:
         description: Regex pattern to extract version info in a capturing group
         required: false
-        default: ^\s*<Version>(.*)<\/Version>\s*$|^\s*<PackageVersion>(.*)<\/PackageVersion>\s*$
+        default: ^\s*<Version>(.*)<\/Version>\s*$
     PACKABLE_REGEX:
         description: Regex pattern to extract if the project is a unit testing project.
         required: false

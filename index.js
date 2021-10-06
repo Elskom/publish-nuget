@@ -215,7 +215,7 @@ class Action {
         }
 
         if (!fs.existsSync(this.packagePath)) {
-            this._printErrorAndExit(`${PACKAGE_PATH} does not exist.`)
+            this._printErrorAndExit(`${this.packagePath} does not exist.`)
         }
 
         if (!hasGlob(this.projectFile) && !hasGlob(this.versionFile)) {

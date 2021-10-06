@@ -210,8 +210,12 @@ class Action {
     }
 
     run() {
-        if (!this.packagePath || !fs.existsSync(this.packagePath)) {
+        if (!this.packagePath) {
             this._printErrorAndExit("PACKAGE_PATH not provided.")
+        }
+
+        if (!fs.existsSync(this.packagePath)) {
+            this._printErrorAndExit(`${PACKAGE_PATH} does not exist.`)
         }
 
         if (!hasGlob(this.projectFile) && !hasGlob(this.versionFile)) {
